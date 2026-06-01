@@ -1,0 +1,65 @@
+services:
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: llm_ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    healthcheck:
+      # ollama is built into the image — no curl needed
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    # NVIDIA GPU — uncomment to enable:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: llm_api
+    ports:
+      - "8000:8000"
+    environment:
+      LLM_BACKEND_STR:       "http://ollama:11434|llama3.2:3b|1"
+      OLLAMA_HOST:           "http://ollama:11434"
+      OLLAMA_MODEL:          "llama3.2:3b"
+      DEFAULT_MAX_WORDS:     "120"
+      DEFAULT_MAX_TOKENS:    "200"
+      DEFAULT_MODE:          "paraphrase"
+      COMPRESSION_PASSES:    "2"
+      HARD_TRUNCATE:         "true"
+      HEALTH_CHECK_INTERVAL: "30"
+      BACKEND_TIMEOUT:       "120.0"
+      LOG_LEVEL:             "INFO"
+      WORKERS:               "2"
+      SKIP_MODEL_PULL:       "false"
+      # API_KEY: "your-secret-key"
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Multi-backend example (uncomment + add second ollama2 service):
+  # Then set: LLM_BACKEND_STR: "http://ollama:11434|llama3.2:3b|2,http://ollama2:11434|mistral:7b|1"
+
+volumes:
+  ollama_data:
+    name: llm_ollama_models
